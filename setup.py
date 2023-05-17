@@ -9,10 +9,10 @@ setup(
             'find_old_large_files=find_old_large_files:run',
         ],
     },
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Disant Upadhyay",
+    author_email="disantupadhyay07@gmail.com",
     description="A utility to find and remove large, old files.",
     long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
-    url="http://github.com/yourusername/find_old_large_files",
+    url="http://github.com/PrinceDisant/find_old_large_files",
 )
