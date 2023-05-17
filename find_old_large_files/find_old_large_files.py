@@ -2,7 +2,7 @@ import os
 import time
 import argparse
 from pathlib import Path
-
+from tqdm import tqdm
 
 class FileScanner:
     def __init__(self, dir_path, size_limit, days_limit, excluded_extensions, trash_dir):
@@ -11,13 +11,19 @@ class FileScanner:
         self.days_limit = days_limit
         self.excluded_extensions = excluded_extensions
         self.trash_dir = trash_dir
+        self.files_to_move = []  # Store the files to be moved
 
     @staticmethod
     def file_age_in_days(file_path):
         return (time.time() - os.path.getmtime(file_path)) / (60*60*24)
 
-    def scan_files(self, file_handler):
-        result = []
+    def count_files(self):
+        count = 0
+        for _, _, filenames in os.walk(self.dir_path):
+            count += len(filenames)
+        return count
+
+    def scan_files(self, file_handler=None):
         for foldername, subfolders, filenames in os.walk(self.dir_path):
             for filename in filenames:
                 file_path = os.path.join(foldername, filename)
@@ -25,19 +31,21 @@ class FileScanner:
                     if (os.path.getsize(file_path) > self.size_limit and
                         self.file_age_in_days(file_path) > self.days_limit and
                         not Path(file_path).suffix in self.excluded_extensions):
-                        result.append(file_handler(file_path))
+                        self.files_to_move.append(file_path)  # Add to files to be moved
+                        if file_handler is not None:
+                            file_handler(file_path)
                 except FileNotFoundError:
                     print(f"File not found: {file_path}, skipping.")
-        return result
+
+    def move_files_to_trash(self):
+        os.makedirs(self.trash_dir, exist_ok=True)
+        with tqdm(total=len(self.files_to_move), desc='Moving files', ncols=70) as pbar:
+            for file_path in self.files_to_move:
+                os.rename(file_path, os.path.join(self.trash_dir, os.path.basename(file_path)))
+                pbar.update()
 
     def print_file(self, file_path):
         print(f"Old, large file: {file_path} Size: {os.path.getsize(file_path)} bytes")
-
-    def move_file_to_trash(self, file_path):
-        os.makedirs(self.trash_dir, exist_ok=True)
-        os.rename(file_path, os.path.join(self.trash_dir, os.path.basename(file_path)))
-        print(f"Moved old, large file to trash: {file_path} Size: {os.path.getsize(file_path)} bytes")
-
 
 def main():
     home = str(Path.home())
@@ -55,7 +63,7 @@ def main():
     scanner = FileScanner(args.dir, size_limit, args.days, args.exclude, args.trash)
     scanner.scan_files(scanner.print_file)
     input("Press enter to move these files to trash...")
-    scanner.scan_files(scanner.move_file_to_trash)
+    scanner.move_files_to_trash()  # Move files to trash
 
 
 if __name__ == "__main__":

@@ -2,8 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="find_old_large_files",
-    version="0.1.1",  # Increment the version here
+    version="0.2.1",  # Increment the version here
     packages=find_packages(),
+    install_requires=["tqdm"],
     entry_points={
         'console_scripts': [
             'find_old_large_files=find_old_large_files:run',
