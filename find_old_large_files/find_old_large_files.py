@@ -35,8 +35,9 @@ class FileScanner:
                         if file_handler is not None:
                             file_handler(file_path)
                 except FileNotFoundError:
-                    print(f"File not found: {file_path}, skipping.")
-
+                    #print(f"File not found: {file_path}, skipping.")
+                    pass
+                
     def move_files_to_trash(self):
         os.makedirs(self.trash_dir, exist_ok=True)
         with tqdm(total=len(self.files_to_move), desc='Moving files', ncols=70) as pbar:
