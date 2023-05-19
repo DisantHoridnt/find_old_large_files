@@ -2,6 +2,7 @@ import os
 import time
 import argparse
 import logging
+import concurrent.futures
 from pathlib import Path
 from tqdm import tqdm
 
@@ -35,20 +36,26 @@ class FileScanner:
     def scan_files(self, file_handler=None):
         num_files = self.count_files()
         with tqdm(total=num_files, desc='Scanning files', ncols=70) as pbar:
-            for foldername, subfolders, filenames in os.walk(self.dir_path):
-                for filename in filenames:
-                    file_path = os.path.join(foldername, filename)
-                    try:
-                        if (os.path.getsize(file_path) > self.size_limit and
-                            self.file_age_in_days(file_path) > self.days_limit and
-                            not Path(file_path).suffix in self.excluded_extensions):
-                            self.files_to_move.append(file_path)  # Add to files to be moved
-                            logging.info('Added file to move: %s', file_path)
-                            if file_handler is not None:
-                                file_handler(file_path)
-                    except FileNotFoundError:
-                        logging.error('File not found: %s', file_path)
-                    pbar.update()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                futures = []
+                for foldername, subfolders, filenames in os.walk(self.dir_path):
+                    for filename in filenames:
+                        file_path = os.path.join(foldername, filename)
+                        futures.append(executor.submit(self.process_file, file_path, file_handler, pbar))
+                concurrent.futures.wait(futures)
+
+    def process_file(self, file_path, file_handler, pbar):
+        try:
+            if (os.path.getsize(file_path) > self.size_limit and
+                self.file_age_in_days(file_path) > self.days_limit and
+                not Path(file_path).suffix in self.excluded_extensions):
+                self.files_to_move.append(file_path)  # Add to files to be moved
+                logging.info('Added file to move: %s', file_path)
+                if file_handler is not None:
+                    file_handler(file_path)
+        except FileNotFoundError:
+            logging.error('File not found: %s', file_path)
+        pbar.update()
 
     def move_files_to_trash(self):
         os.makedirs(self.trash_dir, exist_ok=True)
@@ -91,6 +98,6 @@ def main():
     input("Press enter to move these files to trash...")
     scanner.move_files_to_trash()  # Move files to trash
 
-    
+
 if __name__ == "__main__":
     main()
