@@ -31,11 +31,15 @@ class FileScanner:
         if path is None:
             path = self.dir_path
 
-        for entry in os.scandir(path):
-            if entry.is_dir(follow_symlinks=False):
-                yield from self.gen_files(entry.path)
-            else:
-                yield entry
+        try:
+            for entry in os.scandir(path):
+                if entry.is_dir(follow_symlinks=False):
+                    yield from self.gen_files(entry.path)
+                else:
+                    yield entry
+        except PermissionError:
+            pass
+
 
     def scan_files(self, file_handler=None):
         print("Starting the file scanning process... This may take a while, please hang tight.")
