@@ -11,16 +11,17 @@ class FileScanner:
         self.dir_path = dir_path
         self.size_limit = size_limit
         self.days_limit = days_limit
-        self.excluded_extensions = set(excluded_extensions)  # Convert to set for performance
+        self.excluded_extensions = set(excluded_extensions)
         self.trash_dir = trash_dir
-        self.files_to_move = []  # Store the files to be moved
+        self.files_to_move = []
 
-        # Set up logging
+        # Make sure trash_dir exists before initializing logging
+        os.makedirs(self.trash_dir, exist_ok=True)
+        
         logging.basicConfig(filename=os.path.join(self.trash_dir, 'file_scanner.log'), 
                             level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
-        logging.info('Initialized FileScanner with dir_path: %s, size_limit: %s, days_limit: %s, excluded_extensions: %s, trash_dir: %s',
-                     dir_path, size_limit, days_limit, excluded_extensions, trash_dir)
+        logging.info('Initialized FileScanner')
 
     @staticmethod
     def file_age_in_days(file_path):
@@ -73,17 +74,17 @@ class FileScanner:
         logging.info('Finished moving files')
 
 def main():
-    parser = argparse.ArgumentParser(description='Find old and large files that are hogging disk space')
-    parser.add_argument('dir_path', type=str, help='Directory to scan')
-    parser.add_argument('--size_limit', type=int, default=1e9, help='File size limit in bytes')
+    parser = argparse.ArgumentParser(description='Find old and large files')
+    parser.add_argument('dir_path', type=str, default='/Users/username/Documents', nargs='?', help='Directory to scan')
+    parser.add_argument('--size_limit', type=int, default=200, help='File size limit in bytes')
     parser.add_argument('--days_limit', type=int, default=180, help='File age limit in days')
-    parser.add_argument('--excluded_extensions', nargs='*', default=['.mp4', '.jpg'], help='File extensions to exclude')
-    parser.add_argument('--trash_dir', type=str, default='/tmp/trash', help='Directory to move files to')
+    parser.add_argument('--excluded_extensions', nargs='*', default=['.pdf', '.docx'], help='File extensions to exclude')
+    parser.add_argument('--trash_dir', type=str, default='/Users/username/trash', help='Directory to move files to')
     args = parser.parse_args()
 
     scanner = FileScanner(args.dir_path, args.size_limit, args.days_limit, args.excluded_extensions, args.trash_dir)
 
-    scanner.scan_files(scanner.print_file)
+    scanner.scan_files()
     print(f"Total size to be moved to trash: {scanner.total_size_in_gb():.2f} GB")
 
     choice = input("Do you want to move these files to trash? (yes/no): ")
