@@ -57,6 +57,10 @@ class FileScanner:
             logging.error('File not found: %s', file_path)
         pbar.update()
 
+    def total_size_in_gb(self):
+        total_size = sum(os.path.getsize(file_path) for file_path in self.files_to_move)
+        return total_size / (1024 * 1024 * 1024)  # Convert bytes to gigabytes
+
     def move_files_to_trash(self):
         os.makedirs(self.trash_dir, exist_ok=True)
         with tqdm(total=len(self.files_to_move), desc='Moving files', ncols=70) as pbar:
