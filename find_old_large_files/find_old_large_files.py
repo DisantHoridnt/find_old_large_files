@@ -2,8 +2,8 @@ import os
 import time
 import argparse
 import logging
-from pathlib import Path
 import concurrent.futures
+from pathlib import Path
 from tqdm import tqdm
 
 class FileScanner:
@@ -11,10 +11,11 @@ class FileScanner:
         self.dir_path = dir_path
         self.size_limit = size_limit
         self.days_limit = days_limit
-        self.excluded_extensions = set(excluded_extensions)  # Changed from list to set
+        self.excluded_extensions = set(excluded_extensions)  # Convert to set for performance
         self.trash_dir = trash_dir
-        self.files_to_move = []
+        self.files_to_move = []  # Store the files to be moved
 
+        # Set up logging
         logging.basicConfig(filename=os.path.join(self.trash_dir, 'file_scanner.log'), 
                             level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(message)s')
@@ -25,27 +26,29 @@ class FileScanner:
     def file_age_in_days(file_path):
         return (time.time() - os.path.getmtime(file_path)) / (60*60*24)
 
-    def count_files(self):
-        for _, _, filenames in os.scandir(self.dir_path):
-            yield len(filenames)
+    def gen_files(self, path=None):
+        if path is None:
+            path = self.dir_path
+
+        for entry in os.scandir(path):
+            if entry.is_dir(follow_symlinks=False):
+                yield from self.gen_files(entry.path)
+            else:
+                yield entry
 
     def scan_files(self, file_handler=None):
         print("Starting the file scanning process... This may take a while, please hang tight.")
-        num_files = sum(self.count_files())
-        with tqdm(total=num_files, desc='Scanning files', ncols=70) as pbar:
+        with tqdm(total=sum(1 for _ in self.gen_files()), desc='Scanning files', ncols=70) as pbar:
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = []
-                for entry in os.scandir(self.dir_path):
-                    if entry.is_file():
-                        futures.append(executor.submit(self.process_file, entry.path, file_handler, pbar))
-                concurrent.futures.wait(futures)
+                futures = [executor.submit(self.process_file, entry.path, file_handler, pbar) for entry in self.gen_files()]
+            concurrent.futures.wait(futures)
 
     def process_file(self, file_path, file_handler, pbar):
         try:
             if (os.path.getsize(file_path) > self.size_limit and
                 self.file_age_in_days(file_path) > self.days_limit and
-                Path(file_path).suffix not in self.excluded_extensions):
-                self.files_to_move.append(file_path)
+                not Path(file_path).suffix in self.excluded_extensions):
+                self.files_to_move.append(file_path)  # Add to files to be moved
                 logging.info('Added file to move: %s', file_path)
                 if file_handler is not None:
                     file_handler(file_path)
@@ -55,7 +58,7 @@ class FileScanner:
 
     def total_size_in_gb(self):
         total_size = sum(os.path.getsize(file_path) for file_path in self.files_to_move)
-        return total_size / (1024 * 1024 * 1024)
+        return total_size / (1024 * 1024 * 1024)  # Convert bytes to gigabytes
 
     def move_files_to_trash(self):
         os.makedirs(self.trash_dir, exist_ok=True)
@@ -64,44 +67,28 @@ class FileScanner:
                 try:
                     os.rename(file_path, os.path.join(self.trash_dir, os.path.basename(file_path)))
                     logging.info('Moved file to trash: %s', file_path)
-                except OSError as e:  # Specific Exception Handling
+                except OSError as e:  # Catch specifically the OSError
                     logging.error('Error moving file: %s', e)
                 pbar.update()
-        logging.info('Completed moving files to trash')
-
-    def print_file(self, file_path):
-        size_in_mb = os.path.getsize(file_path) / (1024 * 1024)
-        if size_in_mb < 1024:
-            print(f"Old, large file: {file_path} Size: {size_in_mb:.2f} MB")
-            logging.info('Old, large file: %s Size: %.2f MB', file_path, size_in_mb)
-        else:
-            size_in_gb = size_in_mb / 1024
-            print(f"Old, large file: {file_path} Size: {size_in_gb:.2f} GB")
-            logging.info('Old, large file: %s Size: %.2f GB', file_path, size_in_gb)
+        logging.info('Finished moving files')
 
 def main():
-    home = str(Path.home())
-
-    parser = argparse.ArgumentParser(description="Find and remove large, old files.")
-    parser.add_argument("--size", type=int, default=100, help="File size limit in MB")
-    parser.add_argument("--days", type=int, default=365, help="File age limit in days")
-    parser.add_argument("--dir", type=str, default=home, help="Directory to scan")
-    parser.add_argument("--exclude", type=str, nargs='*', default=['.docx', '.xlsx'], help="File extensions to exclude")
-    parser.add_argument("--trash", type=str, default=os.path.join(home, 'trash'), help="Directory to move files to")
-
+    parser = argparse.ArgumentParser(description='Find old and large files that are hogging disk space')
+    parser.add_argument('dir_path', type=str, help='Directory to scan')
+    parser.add_argument('--size_limit', type=int, default=1e9, help='File size limit in bytes')
+    parser.add_argument('--days_limit', type=int, default=180, help='File age limit in days')
+    parser.add_argument('--excluded_extensions', nargs='*', default=['.mp4', '.jpg'], help='File extensions to exclude')
+    parser.add_argument('--trash_dir', type=str, default='/tmp/trash', help='Directory to move files to')
     args = parser.parse_args()
-    size_limit = args.size * 1024 * 1024  # Convert size from MB to bytes
 
-    scanner = FileScanner(args.dir, size_limit, args.days, args.exclude, args.trash)
+    scanner = FileScanner(args.dir_path, args.size_limit, args.days_limit, args.excluded_extensions, args.trash_dir)
+
     scanner.scan_files(scanner.print_file)
-    # ...
-    print("Total size to be moved to trash: {:.2f} GB".format(scanner.total_size_in_gb()))
-    user_input = input("Do you want to move these files to trash? (Y/N): ")
-    if user_input.lower() == 'y':
+    print(f"Total size to be moved to trash: {scanner.total_size_in_gb():.2f} GB")
+
+    choice = input("Do you want to move these files to trash? (yes/no): ")
+    if choice.lower() == 'yes':
         scanner.move_files_to_trash()
-    else:
-        print("Files were not moved to trash.")
-# ...
 
 if __name__ == "__main__":
     main()
