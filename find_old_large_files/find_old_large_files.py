@@ -74,12 +74,15 @@ class FileScanner:
         logging.info('Finished moving files')
 
 def main():
-    parser = argparse.ArgumentParser(description='Find old and large files')
-    parser.add_argument('dir_path', type=str, default='/Users/username/Documents', nargs='?', help='Directory to scan')
-    parser.add_argument('--size_limit', type=int, default=200, help='File size limit in bytes')
-    parser.add_argument('--days_limit', type=int, default=180, help='File age limit in days')
-    parser.add_argument('--excluded_extensions', nargs='*', default=['.pdf', '.docx'], help='File extensions to exclude')
-    parser.add_argument('--trash_dir', type=str, default='/Users/username/trash', help='Directory to move files to')
+    home = str(Path.home())
+
+    parser = argparse.ArgumentParser(description="Find and remove large, old files.")
+    parser.add_argument("--size", type=int, default=100, help="File size limit in MB")
+    parser.add_argument("--days", type=int, default=365, help="File age limit in days")
+    parser.add_argument("--dir", type=str, default=home, help="Directory to scan")
+    parser.add_argument("--exclude", type=str, nargs='*', default=['.docx', '.xlsx'], help="File extensions to exclude")
+    parser.add_argument("--trash", type=str, default=os.path.join(home, 'trash'), help="Directory to move files to")
+
     args = parser.parse_args()
 
     scanner = FileScanner(args.dir_path, args.size_limit, args.days_limit, args.excluded_extensions, args.trash_dir)
