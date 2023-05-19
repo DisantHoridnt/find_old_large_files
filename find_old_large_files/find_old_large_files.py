@@ -4,7 +4,9 @@ import argparse
 import logging
 import concurrent.futures
 from pathlib import Path
-from tqdm import tqdm
+from tqdm import tqdm, trange
+from time import sleep
+import itertools
 
 class FileScanner:
     def __init__(self, dir_path, size_limit, days_limit, excluded_extensions, trash_dir):
@@ -24,27 +26,24 @@ class FileScanner:
     @staticmethod
     def file_age_in_days(file_path):
         return (time.time() - file_path.stat().st_mtime) / (60*60*24)
-
-    def count_files(self):
-        return sum(1 for _ in self.scan_files())
-
+    
     def scan_files(self):
         for entry in self.dir_path.rglob('*'):
             if entry.is_file():
                 yield entry
 
-    def process_file(self, file_path, file_handler, pbar):
+    def process_file(self, file_path, pbar):
         try:
             if (file_path.stat().st_size > self.size_limit and
                 self.file_age_in_days(file_path) > self.days_limit and
                 file_path.suffix not in self.excluded_extensions):
                 self.files_to_move.append(file_path)
                 logging.info('Added file to move: %s', file_path)
-                if file_handler is not None:
-                    file_handler(file_path)
+                return file_path
         except FileNotFoundError:
             logging.error('File not found: %s', file_path)
-        pbar.update()
+        finally:
+            pbar.update()
 
     def total_size_in_gb(self):
         total_size = sum(file_path.stat().st_size for file_path in self.files_to_move)
@@ -62,16 +61,6 @@ class FileScanner:
                 pbar.update()
         logging.info('Completed moving files to trash')
 
-    def print_file(self, file_path):
-        size_in_mb = file_path.stat().st_size / (1024 * 1024)
-        if size_in_mb < 1024:
-            print(f"Old, large file: {file_path} Size: {size_in_mb:.2f} MB")
-            logging.info('Old, large file: %s Size: %.2f MB', file_path, size_in_mb)
-        else:
-            size_in_gb = size_in_mb / 1024
-            print(f"Old, large file: {file_path} Size: {size_in_gb:.2f} GB")
-            logging.info('Old, large file: %s Size: %.2f GB', file_path, size_in_gb)
-
 def main():
     home = str(Path.home())
 
@@ -86,13 +75,25 @@ def main():
     size_limit = args.size * 1024 * 1024  # Convert size from MB to bytes
 
     scanner = FileScanner(args.dir, size_limit, args.days, args.exclude, args.trash)
-    with tqdm(total=scanner.count_files(), desc='Scanning files', ncols=70) as pbar:
+    
+    spinner = itertools.cycle(['-', '/', '|', '\\'])
+    
+    print("Starting the file scanning process... ", end='')
+    for _ in range(10):  # arbitrary delay for the loading animation
+        print(next(spinner), end='\r')
+        sleep(0.1)
+
+    with tqdm(total=sum(1 for _ in scanner.scan_files()), desc='Scanning files', ncols=70) as pbar:
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(scanner.process_file, file_path, scanner.print_file, pbar) for file_path in scanner.scan_files()]
-            concurrent.futures.wait(futures)
+            futures = [executor.submit(scanner.process_file, file_path, pbar) for file_path in scanner.scan_files()]
+            for future in concurrent.futures.as_completed(futures):
+                file = future.result()
+                if file:
+                    print(f"Old, large file: {file} Size: {file.stat().st_size / (1024 * 1024):.2f} MB")
+
     print("Total size to be moved to trash: {:.2f} GB".format(scanner.total_size_in_gb()))
-    input("Press enter to move these files to trash...")
-    scanner.move_files_to_trash()
+    if input("Press enter to move these files to trash...") == '':
+        scanner.move_files_to_trash()
 
 if __name__ == "__main__":
     main()
